@@ -53,6 +53,18 @@ intercept. Both arguments are optional:
 sudo ./install.sh 29 20    # threshold 29 ms, RT priority 20
 ```
 
+- `threshold_ms` (default 26): the hold threshold. A key press released
+  within this many milliseconds is dropped as chatter or grazing; a press
+  held longer goes through, only imperceptibly delayed. Lower is more
+  responsive, higher filters more.
+- `rt_prio` (default 20): the real-time scheduling priority for the filter
+  (the systemd unit's `CPUSchedulingPriority`). Must stay below 50, the
+  kernel IRQ threads; the installer rejects anything higher.
+
+To change them later, either re-run `install.sh` or edit `HOLD_MS` /
+`RT_PRIO` in `/etc/k70debounce/config` and restart the service (see
+Status).
+
 The service starts immediately but is **not enabled at boot**: a reboot
 restores the original behaviour. Any keyboard you did not select is left
 untouched.
