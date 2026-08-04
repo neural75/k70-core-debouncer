@@ -31,9 +31,7 @@ of a few tens of milliseconds.
 
 Two things can drive the pipeline: the `udevmon` monitor shipped with
 `interception-tools`, or — as this project does — a self-contained systemd
-unit (`k70debounce.service`) that runs the pipeline directly. The systemd
-approach keeps everything in one place: the service unit, the launcher and
-`/etc/k70debounce/config` are all owned by this project.
+unit (`k70debounce.service`) that runs the pipeline directly.
 
 ## Install
 
