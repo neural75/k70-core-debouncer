@@ -81,6 +81,30 @@ journalctl -u k70debounce | grep dropped   # the chatter events the filter caugh
 
 Each dropped press is logged as `k70debounce: dropped <KEY> (hold X.X ms)`.
 
+## Alternative: GNOME bounce keys
+
+GNOME ships its own anti-chatter feature as an accessibility setting:
+
+```
+gsettings set org.gnome.desktop.a11y.keyboard bouncekeys-enable true
+gsettings set org.gnome.desktop.a11y.keyboard bouncekeys-delay 50
+```
+
+On a GNOME Wayland session these work (mutter implements them, unlike
+X11's `xkbset`). They are a convenient no-install option, but they are a
+weaker filter than k70debounce:
+
+- they reject **same-key** repeats only, so they cannot catch grazing —
+  accidental quick touches of *different* keys, which k70debounce filters
+  too;
+- they apply only inside the desktop session: not at the login screen
+  (GDM) and not to programs that read raw evdev input (games, virtual
+  machines);
+- they are re-disabled after a period of inactivity unless re-enabled.
+
+Use them as a quick test or fallback; k70debounce covers the same case at
+the kernel input layer, on any compositor.
+
 ## Remove
 
 ```
