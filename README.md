@@ -29,6 +29,10 @@ the system cannot tell it apart. Because events are delayed by at most the
 threshold, every keystroke is sent with a constant, imperceptible latency
 of a few tens of milliseconds.
 
+Because the grab and the re-injection happen at the kernel input layer,
+the filter applies everywhere the keyboard is read: the desktop session,
+the login screen (GDM) and every tty console.
+
 Two things can drive the pipeline: the `udevmon` monitor shipped with
 `interception-tools`, or — as this project does — a self-contained systemd
 unit (`k70debounce.service`) that runs the pipeline directly.
@@ -52,6 +56,16 @@ sudo ./install.sh 29 20    # threshold 29 ms, RT priority 20
 The service starts immediately but is **not enabled at boot**: a reboot
 restores the original behaviour. Any keyboard you did not select is left
 untouched.
+
+Once you are satisfied after some validation tests, make the filter
+permanent:
+
+```
+sudo systemctl enable --now k70debounce
+```
+
+To undo, `sudo systemctl disable --now k70debounce` (or run
+`sudo ./uninstall.sh` to remove the service entirely).
 
 ## Status
 
