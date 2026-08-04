@@ -3,7 +3,7 @@
 An anti-chatter keyboard filter for Linux. It cancels key presses that are
 too short to be human, fixing switch chatter (a key firing twice) and
 accidental grazing. Built for the Corsair K70 CORE RGB TKL, which has no
-debounce setting in firmware, but it works with any keyboard.
+debounce setting in firmware that you can change with Linux, but it works with any keyboard.
 
 ## How it works
 
