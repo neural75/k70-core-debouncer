@@ -1,0 +1,11 @@
+# Build artifacts
+/k70debounce
+/k70debounce-asan
+/test_k70debounce
+*.o
+*.bin
+
+# capture bookkeeping
+/capture.pid
+/capture.current
+/*.log
