@@ -29,15 +29,67 @@ LEGACY_DROPIN=/etc/systemd/system/udevmon.service.d/10-realtime.conf
 
 # ---------------------------------------------------------------- detection
 
-# Print "NAME|DEVICE" for every keyboard present in /dev/input/by-id.
+# Print "NAME|DEVICE" for every keyboard on the system. Looks first for
+# stable by-id links, then by-path links (PS/2, laptops, devices without a
+# by-id name), then asks the kernel which devices carry the "kbd" handler.
 detect_keyboards() {
-    for link in /dev/input/by-id/*-event-kbd; do
-        [ -e "$link" ] || continue
-        dev="$(readlink -f "$link")"
-        name="$(cat "/sys/class/input/$(basename "$dev")/device/name" 2>/dev/null \
-                || echo "$(basename "$link")")"
-        printf '%s|%s\n' "$name" "$link"
+    local -a candidates=()
+    local glob dev name
+
+    # 1) Stable by-id links (most USB keyboards).
+    for glob in /dev/input/by-id/*-event-kbd; do
+        [ -e "$glob" ] && candidates+=("$glob")
     done
+
+    # 2) by-path links, for keyboards with no by-id name.
+    if [ "${#candidates[@]}" -eq 0 ]; then
+        for glob in /dev/input/by-path/*-event-kbd; do
+            [ -e "$glob" ] && candidates+=("$glob")
+        done
+    fi
+
+    # 3) Last resort: anything the kernel registers with the "kbd" handler.
+    if [ "${#candidates[@]}" -eq 0 ]; then
+        while IFS='|' read -r name dev; do
+            [ -n "$dev" ] && candidates+=("$dev")
+        done < <(proc_input_keyboards)
+    fi
+
+    for dev in "${candidates[@]}"; do
+        [ -e "$dev" ] || continue
+        name="$(device_name "$dev")"
+        printf '%s|%s\n' "$name" "$dev"
+    done
+}
+
+# Parse /proc/bus/input/devices and print "NAME|/dev/input/eventN" for every
+# block whose Handlers line includes "kbd".
+proc_input_keyboards() {
+    [ -r /proc/bus/input/devices ] || return 0
+    local name="" handler=""
+    local line
+    while IFS= read -r line; do
+        case "$line" in
+            '') # end of a device block
+                if [ -n "$name" ] && [ -n "$handler" ]; then
+                    printf '%s|/dev/input/%s\n' "$name" "$handler"
+                fi
+                name=""; handler=""
+                ;;
+            N:\ *) name="${line#N: Name=\"}"; name="${name%\"}" ;;
+            H:\ *)
+                case "$line" in
+                    *kbd*)
+                        handler="${line#*event}"
+                        handler="event${handler%% *}"
+                        ;;
+                esac
+                ;;
+        esac
+    done < /proc/bus/input/devices
+    if [ -n "$name" ] && [ -n "$handler" ]; then
+        printf '%s|/dev/input/%s\n' "$name" "$handler"
+    fi
 }
 
 device_name() {
@@ -62,14 +114,14 @@ choose_manual() {
 }
 
 choose_device() {
-    local -a names links
+    local -a names=() links=()
     local sel p
     while IFS='|' read -r n l; do
         names+=("$n"); links+=("$l")
     done < <(detect_keyboards)
 
     if [ "${#links[@]}" -eq 0 ]; then
-        echo "No keyboard detected under /dev/input/by-id."
+        echo "No keyboard detected under /dev/input."
         echo "Plug it in, or enter its device path manually."
         choose_manual
         return
