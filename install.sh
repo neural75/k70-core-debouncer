@@ -29,67 +29,69 @@ LEGACY_DROPIN=/etc/systemd/system/udevmon.service.d/10-realtime.conf
 
 # ---------------------------------------------------------------- detection
 
-# Print "NAME|DEVICE" for every keyboard on the system. Looks first for
-# stable by-id links, then by-path links (PS/2, laptops, devices without a
-# by-id name), then asks the kernel which devices carry the "kbd" handler.
+# Print "NAME|DEVICE" for every keyboard on the system.
+# Scans by-id links (USB), by-path links (laptop/PS/2), and unlinked event devices.
+# Deduplicates by canonical device and skips virtual/uinput and non-keyboard devices.
 detect_keyboards() {
+    local -A seen=()
     local -a candidates=()
-    local glob dev name
+    local link target dev name sys_dev is_kbd key_cap last_word
 
-    # 1) Stable by-id links (most USB keyboards).
-    for glob in /dev/input/by-id/*-event-kbd; do
-        [ -e "$glob" ] && candidates+=("$glob")
+    # 1) Stable by-id links (preferred for USB/removable keyboards).
+    for link in /dev/input/by-id/*-event-kbd; do
+        [ -e "$link" ] || continue
+        target="$(readlink -f "$link")"
+        if [ -z "${seen["$target"]:-}" ]; then
+            seen["$target"]="$link"
+            candidates+=("$link")
+        fi
     done
 
-    # 2) by-path links, for keyboards with no by-id name.
-    if [ "${#candidates[@]}" -eq 0 ]; then
-        for glob in /dev/input/by-path/*-event-kbd; do
-            [ -e "$glob" ] && candidates+=("$glob")
-        done
-    fi
+    # 2) by-path links (laptop internal keyboards, PS/2, or ports without by-id).
+    for link in /dev/input/by-path/*-event-kbd; do
+        [ -e "$link" ] || continue
+        target="$(readlink -f "$link")"
+        if [ -z "${seen["$target"]:-}" ]; then
+            seen["$target"]="$link"
+            candidates+=("$link")
+        fi
+    done
 
-    # 3) Last resort: anything the kernel registers with the "kbd" handler.
-    if [ "${#candidates[@]}" -eq 0 ]; then
-        while IFS='|' read -r name dev; do
-            [ -n "$dev" ] && candidates+=("$dev")
-        done < <(proc_input_keyboards)
-    fi
+    # 3) Fallback for unlinked event devices.
+    for dev in /dev/input/event*; do
+        [ -e "$dev" ] || continue
+        target="$(readlink -f "$dev")"
+        [ -n "${seen["$target"]:-}" ] && continue
+
+        # Ignore virtual / uinput devices to avoid feedback loops.
+        sys_dev="$(readlink -f "/sys/class/input/$(basename "$target")/device" 2>/dev/null || true)"
+        [[ "$sys_dev" == */devices/virtual/* ]] && continue
+
+        # Verify device is an actual keyboard (not an ACPI button or hotkey).
+        is_kbd=0
+        if command -v udevadm >/dev/null 2>&1; then
+            if udevadm info -q property -n "$target" 2>/dev/null | grep -q '^ID_INPUT_KEYBOARD=1'; then
+                is_kbd=1
+            fi
+        elif [ -r "$sys_dev/capabilities/key" ]; then
+            key_cap="$(cat "$sys_dev/capabilities/key" 2>/dev/null || true)"
+            last_word="${key_cap##* }"
+            if [[ "$last_word" =~ fffffffe|fffffffc ]]; then
+                is_kbd=1
+            fi
+        fi
+
+        if [ "$is_kbd" -eq 1 ]; then
+            seen["$target"]="$target"
+            candidates+=("$target")
+        fi
+    done
 
     for dev in "${candidates[@]}"; do
         [ -e "$dev" ] || continue
         name="$(device_name "$dev")"
         printf '%s|%s\n' "$name" "$dev"
     done
-}
-
-# Parse /proc/bus/input/devices and print "NAME|/dev/input/eventN" for every
-# block whose Handlers line includes "kbd".
-proc_input_keyboards() {
-    [ -r /proc/bus/input/devices ] || return 0
-    local name="" handler=""
-    local line
-    while IFS= read -r line; do
-        case "$line" in
-            '') # end of a device block
-                if [ -n "$name" ] && [ -n "$handler" ]; then
-                    printf '%s|/dev/input/%s\n' "$name" "$handler"
-                fi
-                name=""; handler=""
-                ;;
-            N:\ *) name="${line#N: Name=\"}"; name="${name%\"}" ;;
-            H:\ *)
-                case "$line" in
-                    *kbd*)
-                        handler="${line#*event}"
-                        handler="event${handler%% *}"
-                        ;;
-                esac
-                ;;
-        esac
-    done < /proc/bus/input/devices
-    if [ -n "$name" ] && [ -n "$handler" ]; then
-        printf '%s|/dev/input/%s\n' "$name" "$handler"
-    fi
 }
 
 device_name() {

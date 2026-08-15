@@ -16,7 +16,7 @@ if [ -f "$CFG" ]; then
     DEV="${DEVICE:-}"
 fi
 if [ -z "$DEV" ]; then
-    for l in /dev/input/by-id/*-event-kbd; do
+    for l in /dev/input/by-id/*-event-kbd /dev/input/by-path/*-event-kbd; do
         [ -e "$l" ] && DEV="$l" && break
     done
 fi
