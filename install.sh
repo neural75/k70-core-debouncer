@@ -248,6 +248,7 @@ After=systemd-udevd.service
 
 [Service]
 Type=simple
+ExecStartPre=/bin/sleep 1
 ExecStart=$RUNNER
 Restart=on-failure
 RestartSec=2
