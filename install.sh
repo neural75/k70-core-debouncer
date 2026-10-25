@@ -231,6 +231,18 @@ cat > "$RUNNER" <<EOF
 . $CFG
 ARGS="--hold \$HOLD_MS --rt \$RT_PRIO"
 [ "\$VERBOSE" = 1 ] && ARGS="\$ARGS --verbose"
+
+# The configured path is a by-id symlink, which disappears while the
+# keyboard is gone (suspend/resume, USB re-enumeration). Wait for it here
+# instead of exiting so Restart=always does not spin.
+if [ ! -e "\$DEVICE" ]; then
+    echo "k70debounce-run: waiting for \$DEVICE" >&2
+    while [ ! -e "\$DEVICE" ]; do
+        sleep 1
+    done
+    echo "k70debounce-run: \$DEVICE is back" >&2
+fi
+
 $INTERCEPTION -g "\$DEVICE" | $BIN \$ARGS --notify-socket /run/systemd/notify | $UINPUT -d "\$DEVICE"
 EOF
 chmod 755 "$RUNNER"
@@ -242,6 +254,8 @@ cat > "$UNIT" <<EOF
 # Self-contained: it drives the interception pipeline directly, it does
 # not go through udevmon. NotifyAccess=all lets the status line reach
 # systemd even though k70debounce is a grandchild inside the pipeline.
+# Restart=always (with the launcher waiting for the device) brings the
+# pipeline back after a suspend or USB re-enumeration.
 [Unit]
 Description=k70-core-debouncer anti-chatter keyboard filter
 After=systemd-udevd.service
@@ -250,7 +264,7 @@ After=systemd-udevd.service
 Type=simple
 ExecStartPre=/bin/sleep 1
 ExecStart=$RUNNER
-Restart=on-failure
+Restart=always
 RestartSec=2
 CPUSchedulingPolicy=fifo
 CPUSchedulingPriority=$RTPRIO
